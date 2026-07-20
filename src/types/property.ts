@@ -98,5 +98,10 @@ export function totalInitial(p: Pick<Property, "monthly_rent" | "security_deposi
   return Number(p.monthly_rent) + Number(p.security_deposit) + Number(p.agent_fee);
 }
 export function fmtMoney(n: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
+  return new Intl.NumberFormat("en-MY", {
+    style: "currency",
+    currency: "MYR",
+    maximumFractionDigits: 0,
+    currencyDisplay: "narrowSymbol",
+  }).format(n);
 }
