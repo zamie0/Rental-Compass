@@ -136,6 +136,7 @@ export type Database = {
           monthly_rent: number
           notes: string | null
           parking: boolean | null
+          agent_fee: number
           pet_friendly: boolean | null
           position: number
           property_type: string | null
@@ -167,6 +168,7 @@ export type Database = {
           monthly_rent?: number
           notes?: string | null
           parking?: boolean | null
+          agent_fee?: number
           pet_friendly?: boolean | null
           position?: number
           property_type?: string | null
@@ -198,6 +200,7 @@ export type Database = {
           monthly_rent?: number
           notes?: string | null
           parking?: boolean | null
+          agent_fee?: number
           pet_friendly?: boolean | null
           position?: number
           property_type?: string | null

@@ -8,6 +8,7 @@ export interface ExtractedProperty {
   monthly_rent?: number | null;
   security_deposit?: number | null;
   utilities_estimate?: number | null;
+  agent_fee?: number | null;
   address?: string | null;
   description?: string | null;
   bedrooms?: number | null;
@@ -36,6 +37,7 @@ const EXTRACTION_TOOL = {
         monthly_rent: { type: "number", description: "Monthly rent as a plain number" },
         security_deposit: { type: "number" },
         utilities_estimate: { type: "number" },
+        agent_fee: { type: "number" },
         address: { type: "string" },
         description: { type: "string" },
         bedrooms: { type: "number" },

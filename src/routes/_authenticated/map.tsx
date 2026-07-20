@@ -6,11 +6,12 @@ import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { AppShell } from "@/components/AppShell";
 import { propertiesQuery } from "@/lib/api";
 import { STAGE_META, fmtMoney, type Property } from "@/types/property";
-import { loadGoogleMaps, SANCTUARY_MAP_STYLE, stagePinIcon, userLocationIcon } from "@/lib/googleMaps";
+import { loadGoogleMaps, onGoogleMapsAuthFailure, SANCTUARY_MAP_STYLE, stagePinIcon, userLocationIcon } from "@/lib/googleMaps";
 import { useUserLocation } from "@/components/maps/UserLocationContext";
 import { nearbyPlaces } from "@/lib/maps.functions";
 import { Crosshair, Layers, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type * as Leaflet from "leaflet";
 
 export const Route = createFileRoute("/_authenticated/map")({
   component: MapPage,
@@ -30,7 +31,7 @@ function MapPage() {
   const withCoords = props.filter((p): p is Property & { latitude: number; longitude: number } => p.latitude != null && p.longitude != null);
   const [selected, setSelected] = useState<Property | null>(null);
   const [showNearby, setShowNearby] = useState(false);
-  const [mapError, setMapError] = useState<string | null>(null);
+  const [mapError, setMapError] = useState<string | null>("OpenStreetMap");
   const { location: userLoc, request: requestLoc, status: locStatus } = useUserLocation();
   const nearbyFn = useServerFn(nearbyPlaces);
 
@@ -42,8 +43,11 @@ function MapPage() {
   const nearbyMarkers = useRef<google.maps.Marker[]>([]);
   const [ready, setReady] = useState(false);
 
+  useEffect(() => onGoogleMapsAuthFailure(setMapError), []);
+
   // Init
   useEffect(() => {
+    if (mapError) return;
     let cancel = false;
     (async () => {
       try {
@@ -69,7 +73,7 @@ function MapPage() {
     })();
     return () => { cancel = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [mapError]);
 
   // Sync property markers
   useEffect(() => {
@@ -173,17 +177,21 @@ function MapPage() {
         </div>
 
         <div className="relative h-[70vh] overflow-hidden rounded-3xl border border-border-soft shadow-soft">
-          <div ref={mapEl} className="h-full w-full" />
+          {mapError ? (
+            <FallbackPropertyMap
+              properties={withCoords}
+              selected={selected}
+              onSelect={setSelected}
+              userLoc={userLoc}
+              nearby={showNearby ? nearby.data : undefined}
+            />
+          ) : (
+            <div ref={mapEl} className="h-full w-full" />
+          )}
 
           {mapError && (
-            <div className="absolute inset-0 grid place-items-center bg-surface/90 p-6">
-              <div className="max-w-sm rounded-3xl border border-border-soft bg-white p-6 text-center shadow-soft">
-                <p className="text-lg font-semibold">Maps failed to load</p>
-                <p className="mt-3 text-sm text-muted-foreground">{mapError}</p>
-                <p className="mt-4 text-xs text-muted-foreground">
-                  Make sure your Google Maps API key is valid, billing is enabled, and the key is allowed for this site.
-                </p>
-              </div>
+            <div className="pointer-events-none absolute left-3 top-3 z-[400] max-w-sm rounded-2xl border border-border-soft bg-surface/95 px-3 py-2 text-xs text-muted-foreground shadow-soft backdrop-blur">
+              <div className="font-semibold text-foreground">Using OpenStreetMap</div>
             </div>
           )}
 
@@ -262,4 +270,148 @@ function MapPage() {
 
 function stageKey(s: string) {
   return s === "viewing_scheduled" ? "viewing" : s;
+}
+
+type NearbyPlace = { id: string; name: string; lat: number; lng: number; types: string[]; primary?: string; rating?: number };
+
+function FallbackPropertyMap({
+  properties,
+  selected,
+  onSelect,
+  userLoc,
+  nearby,
+}: {
+  properties: Array<Property & { latitude: number; longitude: number }>;
+  selected: Property | null;
+  onSelect: (property: Property) => void;
+  userLoc: { lat: number; lng: number } | null;
+  nearby?: NearbyPlace[];
+}) {
+  const mapEl = useRef<HTMLDivElement>(null);
+  const leaflet = useRef<typeof Leaflet | null>(null);
+  const map = useRef<Leaflet.Map | null>(null);
+  const propertyMarkers = useRef<Leaflet.Marker[]>([]);
+  const nearbyMarkers = useRef<Leaflet.CircleMarker[]>([]);
+  const userMarker = useRef<Leaflet.CircleMarker | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      const L = await import("leaflet");
+      if (cancel || !mapEl.current || map.current) return;
+      leaflet.current = L;
+      const center = properties[0] ? [properties[0].latitude, properties[0].longitude] as Leaflet.LatLngExpression : [40.7128, -74.006] as Leaflet.LatLngExpression;
+      map.current = L.map(mapEl.current, { zoomControl: true }).setView(center, 12);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map.current);
+      requestAnimationFrame(() => map.current?.invalidateSize());
+      setTimeout(() => map.current?.invalidateSize(), 250);
+      setReady(true);
+    })();
+    return () => {
+      cancel = true;
+      map.current?.remove();
+      map.current = null;
+      leaflet.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const L = leaflet.current;
+    if (!ready || !L || !map.current) return;
+
+    propertyMarkers.current.forEach((marker) => marker.remove());
+    propertyMarkers.current = [];
+
+    const bounds = L.latLngBounds([]);
+    properties.forEach((property) => {
+      const color = getComputedStyle(document.documentElement).getPropertyValue(`--stage-${stageKey(property.stage)}`).trim() || "#5D5CDE";
+      const marker = L.marker([property.latitude, property.longitude], {
+        title: property.title,
+        icon: createLeafletPin(L, color),
+      }).addTo(map.current!);
+      marker.on("click", () => {
+        onSelect(property);
+        map.current?.panTo([property.latitude, property.longitude]);
+      });
+      propertyMarkers.current.push(marker);
+      bounds.extend([property.latitude, property.longitude]);
+    });
+
+    if (properties.length > 1) map.current.fitBounds(bounds, { padding: [80, 80] });
+    else if (properties.length === 1) map.current.setView([properties[0].latitude, properties[0].longitude], 14);
+  }, [ready, properties.map((p) => `${p.id}:${p.latitude}:${p.longitude}:${p.stage}`).join(","), onSelect]);
+
+  useEffect(() => {
+    const L = leaflet.current;
+    if (!ready || !L || !map.current) return;
+    userMarker.current?.remove();
+    userMarker.current = null;
+    if (!userLoc) return;
+    userMarker.current = L.circleMarker([userLoc.lat, userLoc.lng], {
+      radius: 8,
+      color: "white",
+      weight: 3,
+      fillColor: "#5D5CDE",
+      fillOpacity: 1,
+    }).addTo(map.current).bindTooltip("You");
+  }, [ready, userLoc?.lat, userLoc?.lng]);
+
+  useEffect(() => {
+    const L = leaflet.current;
+    if (!ready || !L || !map.current) return;
+    nearbyMarkers.current.forEach((marker) => marker.remove());
+    nearbyMarkers.current = [];
+    (nearby ?? []).forEach((place) => {
+      const marker = L.circleMarker([place.lat, place.lng], {
+        radius: 6,
+        color: "white",
+        weight: 2,
+        fillColor: "#8B7355",
+        fillOpacity: 0.9,
+      }).addTo(map.current!).bindTooltip(place.name);
+      nearbyMarkers.current.push(marker);
+    });
+  }, [ready, nearby]);
+
+  useEffect(() => {
+    if (!selected || !map.current || selected.latitude == null || selected.longitude == null) return;
+    map.current.panTo([selected.latitude, selected.longitude]);
+  }, [selected?.id]);
+
+  return <div ref={mapEl} className="h-full w-full" />;
+}
+
+function createLeafletPin(L: typeof Leaflet, color: string) {
+  const html = `
+    <span style="
+      display:block;
+      width:28px;
+      height:28px;
+      border-radius:50% 50% 50% 0;
+      background:${color};
+      border:3px solid white;
+      box-shadow:0 3px 10px rgba(0,0,0,.25);
+      transform:rotate(-45deg);
+    ">
+      <span style="
+        display:block;
+        width:8px;
+        height:8px;
+        margin:7px;
+        border-radius:999px;
+        background:white;
+      "></span>
+    </span>`;
+
+  return L.divIcon({
+    html,
+    className: "",
+    iconSize: [34, 34],
+    iconAnchor: [17, 31],
+  });
 }

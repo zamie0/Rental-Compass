@@ -94,6 +94,14 @@ function BoardPage() {
                 : `${props.length} propert${props.length === 1 ? "y" : "ies"} in play.`}
             </p>
           </div>
+          {props.length > 0 && (
+            <Link
+              to="/add"
+              className="hidden shrink-0 items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-xs font-bold text-background transition-transform hover:scale-[0.97] active:scale-95 md:inline-flex"
+            >
+              <Plus size={14} strokeWidth={2.5} /> Add property
+            </Link>
+          )}
         </div>
 
         {props.length === 0 ? (
@@ -147,8 +155,14 @@ function MobileBoard({
 
   return (
     <div className="mt-5">
-      {/* Chip nav */}
-      <div className="-mx-5 overflow-x-auto px-5">
+      {/* Chip nav — edge-fade hints at horizontal scroll */}
+      <div
+        className="-mx-5 overflow-x-auto px-5"
+        style={{
+          maskImage: "linear-gradient(to right, transparent 0, black 20px, black calc(100% - 20px), transparent 100%)",
+          WebkitMaskImage: "linear-gradient(to right, transparent 0, black 20px, black calc(100% - 20px), transparent 100%)",
+        }}
+      >
         <div className="flex gap-2 pb-3">
           {STAGES.map((s) => {
             const meta = STAGE_META[s];
@@ -159,7 +173,7 @@ function MobileBoard({
                 key={s}
                 onClick={() => setActive(s)}
                 className={cn(
-                  "shrink-0 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all active:scale-95",
+                  "shrink-0 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2",
                   isActive
                     ? "border-transparent bg-foreground text-background shadow-lift"
                     : "border-border-soft bg-surface text-muted-foreground",
@@ -210,6 +224,15 @@ function MobileBoard({
 
         </div>
       )}
+
+      {/* Floating add button — thumb-reachable on mobile */}
+      <Link
+        to="/add"
+        aria-label="Add property"
+        className="fixed bottom-24 right-5 z-40 grid size-14 place-items-center rounded-full bg-brand text-brand-foreground shadow-brand transition-transform active:scale-90"
+      >
+        <Plus size={22} strokeWidth={2.5} />
+      </Link>
 
       <StagePickerSheet
         property={moving}
@@ -274,7 +297,7 @@ function StagePickerSheet({
               disabled={isCurrent}
               onClick={() => onPick(s)}
               className={cn(
-                "flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 text-left transition-all",
+                "flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2",
                 isCurrent
                   ? "border-brand/30 bg-brand-soft cursor-default"
                   : "border-border-soft bg-surface hover:border-brand/40 hover:bg-brand-soft/50 active:scale-[0.99]",
@@ -340,15 +363,19 @@ function DesktopBoard({
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-      <div className="mt-6 grid grid-cols-5 gap-4 pb-8">
-        {STAGES.map((s) => (
-          <StageColumn key={s} stage={s} properties={byStage[s]} checklistMap={checklistMap} covers={covers} />
-        ))}
+      {/* Horizontal scroll instead of a rigid 5-col grid, so columns stay
+          usable width on 13"/split-screen desktops instead of squeezing. */}
+      <div className="-mx-5 mt-6 overflow-x-auto px-5 pb-8">
+        <div className="flex min-w-max gap-4">
+          {STAGES.map((s) => (
+            <StageColumn key={s} stage={s} properties={byStage[s]} checklistMap={checklistMap} covers={covers} />
+          ))}
+        </div>
       </div>
 
       <DragOverlay dropAnimation={{ duration: 200, easing: "cubic-bezier(0.2, 0, 0, 1)" }}>
         {activeProp && (
-          <div className="w-72">
+          <div className="w-72 rotate-2 scale-[1.03]">
             <PropertyCard property={activeProp} dragging coverUrl={covers[activeProp.id]} checklistProgress={progress(checklistMap[activeProp.id])} />
           </div>
         )}
@@ -373,40 +400,65 @@ function StageColumn({
   const { setNodeRef, isOver } = useDroppable({ id: stage });
 
   return (
-    <div
-      ref={setNodeRef}
-      className={cn(
-        "rounded-3xl p-2 transition-colors",
-        isOver && "bg-brand-soft",
-      )}
-    >
-      <div className="mb-3 flex items-center justify-between px-2">
+    <div className="w-72 shrink-0 lg:w-80">
+      <div
+        className="mb-2 flex items-center justify-between rounded-t-2xl border-b-2 bg-surface/60 px-3 py-2.5 backdrop-blur-sm"
+        style={{ borderColor: meta.tokenVar }}
+      >
         <div className="flex items-center gap-2">
           <span className="size-2 rounded-full" style={{ background: meta.tokenVar }} />
           <h2 className="text-sm font-bold tracking-tight">{meta.label}</h2>
-          <span className="rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
-            {properties.length}
-          </span>
         </div>
+        <span className="rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+          {properties.length}
+        </span>
       </div>
-      <div className="space-y-3 min-h-24">
-        {properties.map((p) => (
-          <DraggableCard key={p.id} property={p} progress={progress(checklistMap[p.id])} coverUrl={covers[p.id]} />
-        ))}
-        {properties.length === 0 && (
-          <div className="grid h-24 place-items-center rounded-2xl border-2 border-dashed border-border-soft text-[10px] uppercase tracking-widest text-muted-foreground/60">
-            Drop here
-          </div>
+
+      <div
+        ref={setNodeRef}
+        className={cn(
+          "min-h-[8rem] rounded-2xl border-2 border-transparent p-2 transition-colors duration-150",
+          isOver && "border-brand/40 bg-brand-soft",
         )}
+      >
+        <div className="space-y-3">
+          {properties.map((p, i) => (
+            <DraggableCard key={p.id} property={p} progress={progress(checklistMap[p.id])} coverUrl={covers[p.id]} index={i} />
+          ))}
+          {properties.length === 0 && (
+            <div className="grid h-24 place-items-center rounded-2xl border-2 border-dashed border-border-soft text-[10px] uppercase tracking-widest text-muted-foreground/60">
+              Drop here
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function DraggableCard({ property, progress, coverUrl }: { property: Property; progress: number; coverUrl?: string }) {
+function DraggableCard({
+  property,
+  progress,
+  coverUrl,
+  index,
+}: {
+  property: Property;
+  progress: number;
+  coverUrl?: string;
+  index: number;
+}) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: property.id });
   return (
-    <div ref={setNodeRef} {...listeners} {...attributes} className={isDragging ? "opacity-30" : ""}>
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={cn(
+        "cursor-grab touch-none animate-in fade-in-0 slide-in-from-top-1 active:cursor-grabbing",
+        isDragging && "opacity-30",
+      )}
+      style={{ animationDelay: `${Math.min(index, 6) * 30}ms`, animationDuration: "220ms" }}
+    >
       <PropertyCard property={property} checklistProgress={progress} coverUrl={coverUrl} />
     </div>
   );
@@ -425,7 +477,7 @@ function EmptyState() {
       </p>
       <Link
         to="/add"
-        className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-brand px-5 py-2.5 text-sm font-semibold text-brand-foreground shadow-brand transition-transform hover:scale-[0.98]"
+        className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-brand px-5 py-2.5 text-sm font-semibold text-brand-foreground shadow-brand transition-transform hover:scale-[0.98] active:scale-95"
       >
         <Plus size={16} /> Add your first property
       </Link>

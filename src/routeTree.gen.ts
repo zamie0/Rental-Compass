@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedAddRouteImport } from './routes/_authenticated/add'
 import { Route as AuthenticatedBoardRouteImport } from './routes/_authenticated/board'
+import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated/calendar'
 import { Route as AuthenticatedCompareRouteImport } from './routes/_authenticated/compare'
 import { Route as AuthenticatedMapRouteImport } from './routes/_authenticated/map'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
@@ -43,6 +44,11 @@ const AuthenticatedBoardRoute = AuthenticatedBoardRouteImport.update({
   path: '/board',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedCalendarRoute = AuthenticatedCalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedCompareRoute = AuthenticatedCompareRouteImport.update({
   id: '/compare',
   path: '/compare',
@@ -69,6 +75,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/add': typeof AuthenticatedAddRoute
   '/board': typeof AuthenticatedBoardRoute
+  '/calendar': typeof AuthenticatedCalendarRoute
   '/compare': typeof AuthenticatedCompareRoute
   '/map': typeof AuthenticatedMapRoute
   '/profile': typeof AuthenticatedProfileRoute
@@ -79,6 +86,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/add': typeof AuthenticatedAddRoute
   '/board': typeof AuthenticatedBoardRoute
+  '/calendar': typeof AuthenticatedCalendarRoute
   '/compare': typeof AuthenticatedCompareRoute
   '/map': typeof AuthenticatedMapRoute
   '/profile': typeof AuthenticatedProfileRoute
@@ -91,6 +99,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/add': typeof AuthenticatedAddRoute
   '/_authenticated/board': typeof AuthenticatedBoardRoute
+  '/_authenticated/calendar': typeof AuthenticatedCalendarRoute
   '/_authenticated/compare': typeof AuthenticatedCompareRoute
   '/_authenticated/map': typeof AuthenticatedMapRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
@@ -103,6 +112,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/add'
     | '/board'
+    | '/calendar'
     | '/compare'
     | '/map'
     | '/profile'
@@ -113,6 +123,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/add'
     | '/board'
+    | '/calendar'
     | '/compare'
     | '/map'
     | '/profile'
@@ -124,6 +135,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/add'
     | '/_authenticated/board'
+    | '/_authenticated/calendar'
     | '/_authenticated/compare'
     | '/_authenticated/map'
     | '/_authenticated/profile'
@@ -173,6 +185,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedBoardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/calendar': {
+      id: '/_authenticated/calendar'
+      path: '/calendar'
+      fullPath: '/calendar'
+      preLoaderRoute: typeof AuthenticatedCalendarRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/compare': {
       id: '/_authenticated/compare'
       path: '/compare'
@@ -207,6 +226,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAddRoute: typeof AuthenticatedAddRoute
   AuthenticatedBoardRoute: typeof AuthenticatedBoardRoute
+  AuthenticatedCalendarRoute: typeof AuthenticatedCalendarRoute
   AuthenticatedCompareRoute: typeof AuthenticatedCompareRoute
   AuthenticatedMapRoute: typeof AuthenticatedMapRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
@@ -216,6 +236,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAddRoute: AuthenticatedAddRoute,
   AuthenticatedBoardRoute: AuthenticatedBoardRoute,
+  AuthenticatedCalendarRoute: AuthenticatedCalendarRoute,
   AuthenticatedCompareRoute: AuthenticatedCompareRoute,
   AuthenticatedMapRoute: AuthenticatedMapRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,

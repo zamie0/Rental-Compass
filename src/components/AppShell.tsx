@@ -1,5 +1,5 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { LayoutGrid, MapPin, GitCompareArrows, Plus, User } from "lucide-react";
+import { CalendarDays, LayoutGrid, MapPin, GitCompareArrows, Plus, User } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
@@ -23,7 +23,9 @@ export function AppShell({ children }: Props) {
           <nav className="hidden items-center gap-1 rounded-full bg-black/5 p-1 md:flex">
             <DesktopTab to="/board" label="Pipeline" active={loc.pathname.startsWith("/board")} />
             <DesktopTab to="/map" label="Map" active={loc.pathname.startsWith("/map")} />
+            <DesktopTab to="/calendar" label="Calendar" active={loc.pathname.startsWith("/calendar")} />
             <DesktopTab to="/compare" label="Compare" active={loc.pathname.startsWith("/compare")} />
+            <DesktopTab to="/profile" label="Profile" active={loc.pathname.startsWith("/profile")} />
           </nav>
 
           <div className="flex items-center gap-2">
@@ -50,9 +52,10 @@ export function AppShell({ children }: Props) {
 
       <main className="mx-auto max-w-6xl">{children}</main>
 
-      <nav className="fixed bottom-4 left-1/2 z-40 flex w-[92%] max-w-md -translate-x-1/2 items-center justify-between rounded-full border border-border-soft bg-surface px-6 py-3 shadow-lift md:hidden">
-        <BottomTab to="/board" icon={<LayoutGrid size={18} strokeWidth={2.2} />} label="Board" active={loc.pathname.startsWith("/board")} />
+      <nav className="fixed bottom-4 left-1/2 z-40 flex w-[94%] max-w-lg -translate-x-1/2 items-center justify-between rounded-full border border-border-soft bg-surface px-5 py-3 shadow-lift md:hidden">
+        <BottomTab to="/board" icon={<LayoutGrid size={18} strokeWidth={2.2} />} label="Pipeline" active={loc.pathname.startsWith("/board")} />
         <BottomTab to="/map" icon={<MapPin size={18} strokeWidth={2.2} />} label="Map" active={loc.pathname.startsWith("/map")} />
+        <BottomTab to="/calendar" icon={<CalendarDays size={18} strokeWidth={2.2} />} label="Calendar" active={loc.pathname.startsWith("/calendar")} />
         <Link
           to="/add"
           aria-label="Add property"
@@ -61,7 +64,7 @@ export function AppShell({ children }: Props) {
           <Plus size={22} strokeWidth={2.5} />
         </Link>
         <BottomTab to="/compare" icon={<GitCompareArrows size={18} strokeWidth={2.2} />} label="Compare" active={loc.pathname.startsWith("/compare")} />
-        <BottomTab to="/profile" icon={<User size={18} strokeWidth={2.2} />} label="You" active={loc.pathname.startsWith("/profile")} />
+        <BottomTab to="/profile" icon={<User size={18} strokeWidth={2.2} />} label="Profile" active={loc.pathname.startsWith("/profile")} />
       </nav>
     </div>
   );

@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/RhButton";
 import { Input } from "@/components/ui/RhInput";
 import { Card } from "@/components/ui/RhCard";
 import { toast } from "sonner";
-import { Home, KeyRound, ShieldCheck } from "lucide-react";
+import { Home, KeyRound, ShieldCheck, Eye, EyeOff } from "lucide-react";
 
 const search = z.object({ redirect: z.string().optional() });
+type AuthMode = "sign-in" | "sign-up" | "forgot-password" | "reset-password";
 
 export const Route = createFileRoute("/auth")({
   validateSearch: search,
@@ -20,17 +21,64 @@ function AuthPage() {
   const router = useRouter();
   const nav = useNavigate();
   const { redirect } = useSearch({ from: "/auth" });
-  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
+  const [mode, setMode] = useState<AuthMode>("sign-in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [resetSent, setResetSent] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [touched, setTouched] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) nav({ to: redirect ?? "/board", replace: true });
-    });
+    let active = true;
+
+    async function initAuth() {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!active) return;
+      if (sessionData.session) {
+        nav({ to: redirect ?? "/board", replace: true });
+        return;
+      }
+
+      const hash = window.location.hash?.substring(1) ?? "";
+      if (!hash) return;
+
+      const params = new URLSearchParams(hash);
+      const type = params.get("type");
+      const accessToken = params.get("access_token");
+      const refreshToken = params.get("refresh_token");
+
+      if (type !== "recovery" || !accessToken || !refreshToken) return;
+
+      try {
+        const { data, error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+
+        if (!active) return;
+        if (error) {
+          toast.error(error.message ?? "Could not complete password reset");
+          return;
+        }
+
+        if (data.session) {
+          setMode("reset-password");
+          setPassword("");
+          setResetSent(false);
+          window.history.replaceState({}, "", window.location.pathname + window.location.search);
+        }
+      } catch (err: any) {
+        if (!active) return;
+        toast.error(err.message ?? "Could not complete password reset");
+      }
+    }
+
+    void initAuth();
+    return () => {
+      active = false;
+    };
   }, [nav, redirect]);
 
   const strength = passwordStrength(password);
@@ -39,6 +87,42 @@ function AuthPage() {
   async function handleEmail(e: React.FormEvent) {
     e.preventDefault();
     setTouched(true);
+
+    if (mode === "forgot-password") {
+      if (!emailValid) return toast.error("Enter a valid email");
+      setLoading(true);
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/auth`,
+        });
+        if (error) throw error;
+        setResetSent(true);
+        toast.success("Check your inbox for the reset link");
+      } catch (err: any) {
+        toast.error(err.message ?? "Could not send reset email");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (mode === "reset-password") {
+      if (password.length < 8) return toast.error("Use at least 8 characters");
+      setLoading(true);
+      try {
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error) throw error;
+        toast.success("Password updated");
+        router.invalidate();
+        nav({ to: redirect ?? "/board", replace: true });
+      } catch (err: any) {
+        toast.error(err.message ?? "Could not update password");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (!emailValid) return toast.error("Enter a valid email");
     if (mode === "sign-up" && password.length < 8) return toast.error("Use at least 8 characters");
     setLoading(true);
@@ -141,19 +225,35 @@ function AuthPage() {
 
           <Card className="p-6 shadow-soft sm:p-8">
             <div className="mb-6 flex items-center gap-1 rounded-full bg-black/5 p-1">
-              <ModeTab active={mode === "sign-in"} onClick={() => setMode("sign-in")}>
-                Sign in
-              </ModeTab>
-              <ModeTab active={mode === "sign-up"} onClick={() => setMode("sign-up")}>
-                Create account
-              </ModeTab>
+              {mode === "forgot-password" ? (
+                <div className="flex-1 rounded-full bg-surface px-4 py-2 text-center text-sm font-semibold text-foreground shadow-soft">
+                  Reset password
+                </div>
+              ) : mode === "reset-password" ? (
+                <div className="flex-1 rounded-full bg-surface px-4 py-2 text-center text-sm font-semibold text-foreground shadow-soft">
+                  Set new password
+                </div>
+              ) : (
+                <>
+                  <ModeTab active={mode === "sign-in"} onClick={() => setMode("sign-in")}>
+                    Sign in
+                  </ModeTab>
+                  <ModeTab active={mode === "sign-up"} onClick={() => setMode("sign-up")}>
+                    Create account
+                  </ModeTab>
+                </>
+              )}
             </div>
 
             <h1 className="text-2xl font-bold tracking-tight">
-              {mode === "sign-in" ? "Welcome back" : "Create your account"}
+              {mode === "sign-in" ? "Welcome back" : mode === "sign-up" ? "Create your account" : mode === "forgot-password" ? "Reset your password" : "Set a new password"}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Your calm home for tracking rental options.
+              {mode === "forgot-password"
+                ? "Enter your email and we’ll send a reset link."
+                : mode === "reset-password"
+                  ? "Choose a strong password for your account."
+                  : "Your calm home for tracking rental options."}
             </p>
 
             <Button
@@ -174,66 +274,156 @@ function AuthPage() {
             </div>
 
             <form onSubmit={handleEmail} className="space-y-4" noValidate>
-              <Input
-                label="Email"
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@home.com"
-                error={touched && email && !emailValid ? "Enter a valid email address" : undefined}
-              />
-              <div>
-                <Input
-                  label="Password"
-                  type="password"
-                  autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
-                  required
-                  minLength={mode === "sign-up" ? 8 : 6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={mode === "sign-up" ? "At least 8 characters" : "Your password"}
-                />
-                {mode === "sign-up" && password && (
-                  <div className="mt-2 space-y-1.5" aria-live="polite">
-                    <div className="flex h-1.5 w-full gap-1">
-                      {[0, 1, 2, 3].map((i) => (
-                        <div
-                          key={i}
-                          className="h-full flex-1 overflow-hidden rounded-full bg-black/5"
-                        >
-                          <div
-                            className="h-full rounded-full transition-all duration-300 ease-out"
-                            style={{
-                              width: i < strength.score ? "100%" : "0%",
-                              background: strength.color,
-                            }}
-                          />
-                        </div>
-                      ))}
+              {mode === "forgot-password" ? (
+                <>
+                  <Input
+                    label="Email"
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@home.com"
+                    error={touched && email && !emailValid ? "Enter a valid email address" : undefined}
+                  />
+                  {resetSent && (
+                    <div className="rounded-2xl border border-brand/20 bg-brand-soft px-3 py-2 text-sm text-brand">
+                      Check your inbox for the reset link.
                     </div>
-                    <p className="text-xs text-muted-foreground">{strength.label}</p>
-                  </div>
-                )}
-              </div>
-
-              {mode === "sign-in" && (
-                <div className="flex justify-end">
+                  )}
+                  <Button type="submit" size="lg" className="w-full" loading={loading}>
+                    Send reset link
+                  </Button>
                   <button
                     type="button"
-                    onClick={() => toast("Password reset isn't wired up yet")}
-                    className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 rounded"
+                    onClick={() => {
+                      setMode("sign-in");
+                      setResetSent(false);
+                      setPassword("");
+                    }}
+                    className="w-full text-center text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                   >
-                    Forgot password?
+                    Back to sign in
                   </button>
-                </div>
-              )}
+                </>
+              ) : mode === "reset-password" ? (
+                <>
+                  <div>
+                    <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-foreground">
+                      New password
+                    </label>
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        autoComplete="new-password"
+                        required
+                        minLength={8}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="At least 8 characters"
+                        className="pr-11"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((v) => !v)}
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        aria-pressed={showPassword}
+                        tabIndex={-1}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                      >
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                  <Button type="submit" size="lg" className="w-full" loading={loading}>
+                    Update password
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Input
+                    label="Email"
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@home.com"
+                    error={touched && email && !emailValid ? "Enter a valid email address" : undefined}
+                  />
+                  <div>
+                    <label
+                      htmlFor="password"
+                      className="mb-1.5 block text-sm font-medium text-foreground"
+                    >
+                      Password
+                    </label>
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+                        required
+                        minLength={mode === "sign-up" ? 8 : 6}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder={mode === "sign-up" ? "At least 8 characters" : "Your password"}
+                        className="pr-11"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((v) => !v)}
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        aria-pressed={showPassword}
+                        tabIndex={-1}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                      >
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                    {mode === "sign-up" && password && (
+                      <div className="mt-2 space-y-1.5" aria-live="polite">
+                        <div className="flex h-1.5 w-full gap-1">
+                          {[0, 1, 2, 3].map((i) => (
+                            <div
+                              key={i}
+                              className="h-full flex-1 overflow-hidden rounded-full bg-black/5"
+                            >
+                              <div
+                                className="h-full rounded-full transition-all duration-300 ease-out"
+                                style={{
+                                  width: i < strength.score ? "100%" : "0%",
+                                  background: strength.color,
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{strength.label}</p>
+                      </div>
+                    )}
+                  </div>
 
-              <Button type="submit" size="lg" className="w-full" loading={loading}>
-                {mode === "sign-in" ? "Sign in" : "Create account"}
-              </Button>
+                  {mode === "sign-in" && (
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setMode("forgot-password")}
+                        className="rounded text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
+                  )}
+
+                  <Button type="submit" size="lg" className="w-full" loading={loading}>
+                    {mode === "sign-in" ? "Sign in" : "Create account"}
+                  </Button>
+                </>
+              )}
             </form>
 
             <p className="mt-6 text-center text-xs text-muted-foreground md:hidden">

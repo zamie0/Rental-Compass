@@ -114,6 +114,7 @@ function CompareCol({ property, pct, done, total }: { property: Property; pct: n
         <Row label="Utilities" value={fmtMoney(property.utilities_estimate)} />
         <Row label="All-in / mo" value={fmtMoney(totalMonthly(property))} strong />
         <Row label="Deposit" value={fmtMoney(property.security_deposit)} />
+        <Row label="Agent fee" value={fmtMoney(property.agent_fee)} />
         <Row label="Move-in" value={fmtMoney(totalInitial(property))} strong />
         <div className="px-4 py-3">
           <div className="mb-1 flex justify-between text-[11px] text-muted-foreground">

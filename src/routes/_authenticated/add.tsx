@@ -47,6 +47,7 @@ interface FormState {
   monthly_rent: string;
   security_deposit: string;
   utilities_estimate: string;
+  agent_fee: string;
   stage: Stage;
   notes: string;
   description: string;
@@ -71,6 +72,7 @@ const emptyForm: FormState = {
   monthly_rent: "",
   security_deposit: "",
   utilities_estimate: "",
+  agent_fee: "",
   stage: "interested",
   notes: "",
   description: "",
@@ -118,6 +120,7 @@ function mergeExtracted(form: FormState, ex: ExtractedProperty): { form: FormSta
   setNum("monthly_rent", ex.monthly_rent);
   setNum("security_deposit", ex.security_deposit);
   setNum("utilities_estimate", ex.utilities_estimate);
+  setNum("agent_fee", ex.agent_fee);
   setNum("bedrooms", ex.bedrooms);
   setNum("bathrooms", ex.bathrooms);
   setBool("parking", ex.parking);
@@ -149,6 +152,7 @@ function AddPage() {
         monthly_rent: Number(form.monthly_rent || 0),
         security_deposit: Number(form.security_deposit || 0),
         utilities_estimate: Number(form.utilities_estimate || 0),
+        agent_fee: Number(form.agent_fee || 0),
         stage: form.stage,
         notes: form.notes || undefined,
         description: form.description || null,
@@ -545,7 +549,7 @@ function ManualWizard({
   const steps = [
     { title: "The basics", fields: ["title", "listing_url"] as const },
     { title: "Where is it?", fields: ["address"] as const },
-    { title: "The numbers", fields: ["monthly_rent", "security_deposit", "utilities_estimate"] as const },
+    { title: "The numbers", fields: ["monthly_rent", "security_deposit", "utilities_estimate", "agent_fee"] as const },
     { title: "Property details", fields: [] as readonly string[] },
     { title: "Pipeline & notes", fields: ["stage", "notes"] as const },
   ];
@@ -610,6 +614,8 @@ function ManualWizard({
                 onChange={(e) => setForm({ ...form, monthly_rent: e.target.value })} error={errors.monthly_rent} autoFocus />
               <Input label="Security deposit" type="number" inputMode="decimal" min={0} placeholder="2850" value={form.security_deposit}
                 onChange={(e) => setForm({ ...form, security_deposit: e.target.value })} />
+              <Input label="Agent fee" type="number" inputMode="decimal" min={0} placeholder="300" value={form.agent_fee}
+                onChange={(e) => setForm({ ...form, agent_fee: e.target.value })} />
               <Input label="Est. utilities / month" type="number" inputMode="decimal" min={0} placeholder="180" value={form.utilities_estimate}
                 onChange={(e) => setForm({ ...form, utilities_estimate: e.target.value })}
                 hint="Rough is fine. You can refine later." />
@@ -686,6 +692,10 @@ function ReviewForm({
         <div>
           <FieldLabel k="security_deposit" ai={badge("security_deposit")}>Deposit</FieldLabel>
           <Input type="number" value={form.security_deposit} onChange={(e) => setForm({ ...form, security_deposit: e.target.value })} />
+        </div>
+        <div>
+          <FieldLabel k="agent_fee" ai={badge("agent_fee")}>Agent fee</FieldLabel>
+          <Input type="number" value={form.agent_fee} onChange={(e) => setForm({ ...form, agent_fee: e.target.value })} />
         </div>
         <div className="sm:col-span-2">
           <FieldLabel k="address" ai={badge("address")}>Address</FieldLabel>

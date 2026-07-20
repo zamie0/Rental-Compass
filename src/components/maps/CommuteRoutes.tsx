@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { computeRoute, type TravelMode } from "@/lib/maps.functions";
-import { loadGoogleMaps, SANCTUARY_MAP_STYLE } from "@/lib/googleMaps";
+import { loadGoogleMaps, onGoogleMapsAuthFailure, SANCTUARY_MAP_STYLE } from "@/lib/googleMaps";
 import { Car, Bike, Footprints, Train, Zap, Clock, Route as RouteIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CommuteTarget } from "@/types/property";
+import type * as Leaflet from "leaflet";
 
 const MODES: { id: TravelMode; label: string; icon: any }[] = [
   { id: "DRIVE", label: "Drive", icon: Car },
@@ -49,11 +50,20 @@ export function CommuteRoutes({ origin, targets }: Props) {
   const originMarker = useRef<google.maps.Marker | null>(null);
   const destMarker = useRef<google.maps.Marker | null>(null);
   const polyRef = useRef<google.maps.Polyline | null>(null);
+  const [mapError, setMapError] = useState<string | null>("OpenStreetMap");
+
+  useEffect(() => onGoogleMapsAuthFailure(setMapError), []);
 
   useEffect(() => {
+    if (mapError) return;
     let cancel = false;
     (async () => {
-      await loadGoogleMaps();
+      try {
+        await loadGoogleMaps();
+      } catch (error) {
+        if (!cancel) setMapError(error instanceof Error ? error.message : String(error));
+        return;
+      }
       if (cancel || !mapEl.current || mapRef.current) return;
       mapRef.current = new google.maps.Map(mapEl.current, {
         center: origin,
@@ -71,7 +81,7 @@ export function CommuteRoutes({ origin, targets }: Props) {
     })();
     return () => { cancel = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [mapError]);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -174,8 +184,127 @@ export function CommuteRoutes({ origin, targets }: Props) {
 
       {/* Map */}
       <div className="overflow-hidden rounded-2xl border border-border-soft shadow-soft">
-        <div ref={mapEl} className="h-[280px] w-full" />
+        {mapError ? (
+          <FallbackCommuteMap origin={origin} target={target ?? null} polyline={q.data?.polyline} />
+        ) : (
+          <div ref={mapEl} className="h-[280px] w-full" />
+        )}
       </div>
     </div>
   );
+}
+
+function FallbackCommuteMap({
+  origin,
+  target,
+  polyline,
+}: {
+  origin: { lat: number; lng: number };
+  target: CommuteTarget | null;
+  polyline?: string;
+}) {
+  const mapEl = useRef<HTMLDivElement>(null);
+  const leaflet = useRef<typeof Leaflet | null>(null);
+  const map = useRef<Leaflet.Map | null>(null);
+  const layers = useRef<Leaflet.Layer[]>([]);
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      const L = await import("leaflet");
+      if (cancel || !mapEl.current || map.current) return;
+      leaflet.current = L;
+      map.current = L.map(mapEl.current).setView([origin.lat, origin.lng], 13);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map.current);
+      requestAnimationFrame(() => map.current?.invalidateSize());
+      setTimeout(() => map.current?.invalidateSize(), 250);
+    })();
+    return () => {
+      cancel = true;
+      map.current?.remove();
+      map.current = null;
+      leaflet.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const L = leaflet.current;
+    if (!L || !map.current) return;
+    layers.current.forEach((layer) => layer.remove());
+    layers.current = [];
+
+    const originLayer = L.circleMarker([origin.lat, origin.lng], {
+      radius: 8,
+      color: "white",
+      weight: 3,
+      fillColor: "#5D5CDE",
+      fillOpacity: 1,
+    }).addTo(map.current);
+    layers.current.push(originLayer);
+
+    const bounds = L.latLngBounds([[origin.lat, origin.lng]]);
+    if (target) {
+      const destination: Leaflet.LatLngExpression = [target.latitude!, target.longitude!];
+      const destLayer = L.circleMarker(destination, {
+        radius: 8,
+        color: "white",
+        weight: 3,
+        fillColor: "#E85D75",
+        fillOpacity: 1,
+      }).addTo(map.current).bindTooltip(target.label);
+      layers.current.push(destLayer);
+      bounds.extend(destination);
+
+      const routePath = polyline ? decodePolyline(polyline) : [];
+      if (routePath.length > 1) {
+        const line = L.polyline(routePath, {
+          color: "#5D5CDE",
+          opacity: 0.9,
+          weight: 5,
+        }).addTo(map.current);
+        layers.current.push(line);
+        routePath.forEach((point) => bounds.extend(point));
+      }
+    }
+
+    map.current.fitBounds(bounds, { padding: [50, 50], maxZoom: target ? 15 : 13 });
+  }, [origin.lat, origin.lng, target?.id, polyline]);
+
+  return <div ref={mapEl} className="h-[280px] w-full" />;
+}
+
+function decodePolyline(encoded: string): Leaflet.LatLngExpression[] {
+  const points: Leaflet.LatLngExpression[] = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < encoded.length) {
+    let result = 0;
+    let shift = 0;
+    let byte: number;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+
+    result = 0;
+    shift = 0;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    lng += result & 1 ? ~(result >> 1) : result >> 1;
+
+    points.push([lat / 1e5, lng / 1e5]);
+  }
+
+  return points;
 }

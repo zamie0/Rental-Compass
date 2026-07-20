@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { loadGoogleMaps, SANCTUARY_MAP_STYLE, stagePinIcon } from "@/lib/googleMaps";
+import { loadGoogleMaps, onGoogleMapsAuthFailure, SANCTUARY_MAP_STYLE, stagePinIcon } from "@/lib/googleMaps";
 import { PlaceAutocomplete } from "./PlaceAutocomplete";
 import { reverseGeocode } from "@/lib/maps.functions";
 import { useServerFn } from "@tanstack/react-start";
 import { Crosshair, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type * as Leaflet from "leaflet";
 
 interface Props {
   value?: { lat: number; lng: number } | null;
@@ -20,16 +21,24 @@ export function LocationPicker({ value, address, onChange, pinColor = "#5D5CDE",
   const mapRef = useRef<google.maps.Map | null>(null);
   const markerRef = useRef<google.maps.Marker | null>(null);
   const [ready, setReady] = useState(false);
+  const [mapError, setMapError] = useState<string | null>("OpenStreetMap");
   const [addr, setAddr] = useState(address ?? "");
   const reverseFn = useServerFn(reverseGeocode);
 
   useEffect(() => setAddr(address ?? ""), [address]);
+  useEffect(() => onGoogleMapsAuthFailure(setMapError), []);
 
   // Init map
   useEffect(() => {
+    if (mapError) return;
     let cancel = false;
     (async () => {
-      await loadGoogleMaps();
+      try {
+        await loadGoogleMaps();
+      } catch (error) {
+        if (!cancel) setMapError(error instanceof Error ? error.message : String(error));
+        return;
+      }
       if (cancel || !mapEl.current || mapRef.current) return;
       const center = value ?? { lat: 40.7128, lng: -74.006 };
       const map = new google.maps.Map(mapEl.current, {
@@ -65,7 +74,7 @@ export function LocationPicker({ value, address, onChange, pinColor = "#5D5CDE",
     })();
     return () => { cancel = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [mapError]);
 
   // Update marker on external change
   useEffect(() => {
@@ -76,13 +85,7 @@ export function LocationPicker({ value, address, onChange, pinColor = "#5D5CDE",
     }
   }, [ready, value?.lat, value?.lng]);
 
-  async function placeMarker(lat: number, lng: number, animate = true) {
-    if (!markerRef.current || !mapRef.current) return;
-    markerRef.current.setPosition({ lat, lng });
-    if (animate) {
-      markerRef.current.setAnimation(google.maps.Animation.DROP);
-    }
-    mapRef.current.panTo({ lat, lng });
+  async function chooseLocation(lat: number, lng: number) {
     try {
       const r = await reverseFn({ data: { lat, lng } });
       const a = r?.address ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
@@ -93,6 +96,17 @@ export function LocationPicker({ value, address, onChange, pinColor = "#5D5CDE",
       setAddr(a);
       onChange({ lat, lng, address: a });
     }
+  }
+
+  async function placeMarker(lat: number, lng: number, animate = true) {
+    if (markerRef.current && mapRef.current) {
+      markerRef.current.setPosition({ lat, lng });
+      if (animate) {
+        markerRef.current.setAnimation(google.maps.Animation.DROP);
+      }
+      mapRef.current.panTo({ lat, lng });
+    }
+    await chooseLocation(lat, lng);
   }
 
   function useCurrent() {
@@ -117,7 +131,11 @@ export function LocationPicker({ value, address, onChange, pinColor = "#5D5CDE",
       />
 
       <div className="relative overflow-hidden rounded-2xl border border-border-soft shadow-soft">
-        <div ref={mapEl} style={{ height }} className="w-full" />
+        {mapError ? (
+          <FallbackLocationMap value={value ?? null} height={height} pinColor={pinColor} onPick={chooseLocation} />
+        ) : (
+          <div ref={mapEl} style={{ height }} className="w-full" />
+        )}
         <button
           type="button"
           onClick={useCurrent}
@@ -133,6 +151,11 @@ export function LocationPicker({ value, address, onChange, pinColor = "#5D5CDE",
             </div>
           </div>
         )}
+        {mapError && (
+          <div className="pointer-events-none absolute left-3 top-3 max-w-[calc(100%-5rem)] rounded-xl border border-border-soft bg-surface/95 px-3 py-1.5 text-[11px] font-semibold text-muted-foreground shadow-soft">
+            Using OpenStreetMap
+          </div>
+        )}
       </div>
 
       {value && addr && (
@@ -146,4 +169,76 @@ export function LocationPicker({ value, address, onChange, pinColor = "#5D5CDE",
       )}
     </div>
   );
+}
+
+function FallbackLocationMap({
+  value,
+  height,
+  pinColor,
+  onPick,
+}: {
+  value: { lat: number; lng: number } | null;
+  height: number;
+  pinColor: string;
+  onPick: (lat: number, lng: number) => void;
+}) {
+  const mapEl = useRef<HTMLDivElement>(null);
+  const leaflet = useRef<typeof Leaflet | null>(null);
+  const map = useRef<Leaflet.Map | null>(null);
+  const marker = useRef<Leaflet.Marker | null>(null);
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      const L = await import("leaflet");
+      if (cancel || !mapEl.current || map.current) return;
+      leaflet.current = L;
+      const center = value ? [value.lat, value.lng] as Leaflet.LatLngExpression : [40.7128, -74.006] as Leaflet.LatLngExpression;
+      map.current = L.map(mapEl.current).setView(center, value ? 15 : 11);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map.current);
+      requestAnimationFrame(() => map.current?.invalidateSize());
+      setTimeout(() => map.current?.invalidateSize(), 250);
+      map.current.on("click", (event: Leaflet.LeafletMouseEvent) => onPick(event.latlng.lat, event.latlng.lng));
+    })();
+    return () => {
+      cancel = true;
+      map.current?.remove();
+      map.current = null;
+      leaflet.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const L = leaflet.current;
+    if (!L || !map.current) return;
+    marker.current?.remove();
+    if (!value) return;
+    marker.current = L.marker([value.lat, value.lng], {
+      draggable: true,
+      icon: createLeafletPin(L, pinColor),
+    }).addTo(map.current);
+    marker.current.on("dragend", () => {
+      const point = marker.current?.getLatLng();
+      if (point) onPick(point.lat, point.lng);
+    });
+    map.current.panTo([value.lat, value.lng]);
+  }, [value?.lat, value?.lng, pinColor, onPick]);
+
+  return <div ref={mapEl} style={{ height }} className="w-full" />;
+}
+
+function createLeafletPin(L: typeof Leaflet, color: string) {
+  return L.divIcon({
+    className: "",
+    iconAnchor: [17, 31],
+    iconSize: [34, 34],
+    html: `
+      <span style="display:block;width:28px;height:28px;border-radius:50% 50% 50% 0;background:${color};border:3px solid white;box-shadow:0 3px 10px rgba(0,0,0,.25);transform:rotate(-45deg)">
+        <span style="display:block;width:8px;height:8px;margin:7px;border-radius:999px;background:white"></span>
+      </span>`,
+  });
 }

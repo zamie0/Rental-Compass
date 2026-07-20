@@ -5,12 +5,49 @@ const BROWSER_KEY = import.meta.env.VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_K
 const TRACKING_ID = import.meta.env.VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_TRACKING_ID as string | undefined;
 
 let loadPromise: Promise<typeof google> | null = null;
+let scriptEl: HTMLScriptElement | null = null;
+let authFailureInstalled = false;
+let authFailed = false;
+
+const AUTH_FAILURE_MESSAGE = "Google Maps authentication failed. Check your API key, billing, and restrictions.";
+
+function hasGoogleMapsApi(): boolean {
+  return !!(window as any).google?.maps?.importLibrary;
+}
+
+function emitAuthFailure() {
+  authFailed = true;
+  window.dispatchEvent(new CustomEvent("rental-hub:google-maps-auth-failure", {
+    detail: AUTH_FAILURE_MESSAGE,
+  }));
+}
+
+function installAuthFailureHandler(onFailure?: () => void) {
+  const current = (window as any).gm_authFailure;
+  (window as any).gm_authFailure = () => {
+    if (typeof current === "function" && current !== (window as any).gm_authFailure) current();
+    emitAuthFailure();
+    onFailure?.();
+  };
+  authFailureInstalled = true;
+}
+
+export function onGoogleMapsAuthFailure(callback: (message: string) => void) {
+  if (typeof window === "undefined") return () => {};
+  const listener = (event: Event) => {
+    callback((event as CustomEvent<string>).detail || AUTH_FAILURE_MESSAGE);
+  };
+  window.addEventListener("rental-hub:google-maps-auth-failure", listener);
+  if (!authFailureInstalled) installAuthFailureHandler();
+  if (authFailed) callback(AUTH_FAILURE_MESSAGE);
+  return () => window.removeEventListener("rental-hub:google-maps-auth-failure", listener);
+}
 
 export function loadGoogleMaps(): Promise<typeof google> {
   if (typeof window === "undefined") {
     return Promise.reject(new Error("Google Maps can only load in the browser"));
   }
-  if ((window as any).google?.maps?.importLibrary) {
+  if (hasGoogleMapsApi()) {
     return Promise.resolve((window as any).google);
   }
   if (loadPromise) return loadPromise;
@@ -20,19 +57,35 @@ export function loadGoogleMaps(): Promise<typeof google> {
 
   loadPromise = new Promise<typeof google>((resolve, reject) => {
     const cbName = `__gmapsCb_${Math.random().toString(36).slice(2)}`;
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      loadPromise = null;
+      scriptEl?.remove();
+      scriptEl = null;
+      reject(new Error("Google Maps timed out while loading."));
+    }, 15000);
     const cleanup = () => {
+      window.clearTimeout(timeout);
       delete (window as any)[cbName];
-      delete (window as any).gm_authFailure;
     };
     (window as any)[cbName] = () => {
       cleanup();
-      resolve((window as any).google);
+      if (hasGoogleMapsApi()) {
+        resolve((window as any).google);
+      } else {
+        loadPromise = null;
+        scriptEl?.remove();
+        scriptEl = null;
+        reject(new Error("Google Maps script loaded, but the API was not available."));
+      }
     };
-    (window as any).gm_authFailure = () => {
+    installAuthFailureHandler(() => {
       cleanup();
       loadPromise = null;
-      reject(new Error("Google Maps authentication failed. Check your API key, billing, and restrictions."));
-    };
+      scriptEl?.remove();
+      scriptEl = null;
+      reject(new Error(AUTH_FAILURE_MESSAGE));
+    });
     const params = new URLSearchParams({
       key: BROWSER_KEY,
       v: "weekly",
@@ -42,19 +95,15 @@ export function loadGoogleMaps(): Promise<typeof google> {
     });
     if (TRACKING_ID) params.set("channel", TRACKING_ID);
     const s = document.createElement("script");
+    scriptEl = s;
     s.src = `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
     s.async = true;
     s.defer = true;
-    s.onload = () => {
-      if (!(window as any).google?.maps?.importLibrary) {
-        cleanup();
-        loadPromise = null;
-        reject(new Error("Google Maps script loaded, but the API was not available."));
-      }
-    };
     s.onerror = () => {
       cleanup();
       loadPromise = null;
+      scriptEl?.remove();
+      scriptEl = null;
       reject(new Error("Failed to load Google Maps script."));
     };
     document.head.appendChild(s);

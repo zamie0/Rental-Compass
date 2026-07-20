@@ -126,10 +126,11 @@ function PropertyPage() {
         )}
 
         {/* Numbers grid */}
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <StatCard label="Monthly rent" value={fmtMoney(property.monthly_rent)} />
           <StatCard label="All-in / month" value={fmtMoney(totalMonthly(property))} sub={`+ ${fmtMoney(property.utilities_estimate)} utilities`} />
           <StatCard label="Security deposit" value={fmtMoney(property.security_deposit)} />
+          <StatCard label="Agent fee" value={fmtMoney(property.agent_fee)} />
           <StatCard label="Move-in cost" value={fmtMoney(totalInitial(property))} accent />
         </div>
 
@@ -164,6 +165,7 @@ function PropertyPage() {
                 <Input label="Monthly rent" type="number" value={String(property.monthly_rent)} onChange={(e) => patch.mutate({ monthly_rent: Number(e.target.value) })} />
                 <Input label="Utilities est." type="number" value={String(property.utilities_estimate)} onChange={(e) => patch.mutate({ utilities_estimate: Number(e.target.value) })} />
                 <Input label="Deposit" type="number" value={String(property.security_deposit)} onChange={(e) => patch.mutate({ security_deposit: Number(e.target.value) })} />
+                <Input label="Agent fee" type="number" value={String(property.agent_fee ?? 0)} onChange={(e) => patch.mutate({ agent_fee: Number(e.target.value) })} />
                 <Input label="Viewing" type="datetime-local"
                   value={property.viewing_at ? property.viewing_at.slice(0, 16) : ""}
                   onChange={(e) => patch.mutate({ viewing_at: e.target.value ? new Date(e.target.value).toISOString() : null })} />

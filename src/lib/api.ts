@@ -58,6 +58,7 @@ export async function createProperty(input: {
   monthly_rent: number;
   security_deposit: number;
   utilities_estimate: number;
+  agent_fee?: number;
   stage?: Stage;
   notes?: string;
   latitude?: number | null;

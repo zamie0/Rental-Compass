@@ -35,6 +35,7 @@ export interface Property {
   monthly_rent: number;
   security_deposit: number;
   utilities_estimate: number;
+  agent_fee: number;
   stage: Stage;
   decision: Decision;
   viewing_at: string | null;
@@ -93,8 +94,8 @@ export interface CommuteTarget {
 export function totalMonthly(p: Pick<Property, "monthly_rent" | "utilities_estimate">) {
   return Number(p.monthly_rent) + Number(p.utilities_estimate);
 }
-export function totalInitial(p: Pick<Property, "monthly_rent" | "security_deposit">) {
-  return Number(p.monthly_rent) + Number(p.security_deposit);
+export function totalInitial(p: Pick<Property, "monthly_rent" | "security_deposit" | "agent_fee">) {
+  return Number(p.monthly_rent) + Number(p.security_deposit) + Number(p.agent_fee);
 }
 export function fmtMoney(n: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
